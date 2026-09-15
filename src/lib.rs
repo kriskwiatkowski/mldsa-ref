@@ -81,7 +81,7 @@ impl MLDSAParameters {
     ///
     /// # Example
     /// ```
-    /// use mldsa_edu::MLDSAParameters;
+    /// use mldsa::MLDSAParameters;
     /// let params = MLDSAParameters::new("ML-DSA-44").unwrap();
     /// ```
     pub fn new(name: &str) -> Result<Self, &'static str> {
@@ -1016,7 +1016,7 @@ fn infinity_norm(a: &[[i32; POLY_SIZE]]) -> i32 {
 ///
 /// # Example
 /// ```
-/// use mldsa_edu::{MLDSAParameters, generate_key};
+/// use mldsa::{MLDSAParameters, generate_key};
 /// let param = MLDSAParameters::new("ML-DSA-44").unwrap();
 /// let seed = [0u8; 32]; // Use secure randomness in production
 /// let mut pk = [0u8; 1312];
@@ -1125,7 +1125,7 @@ pub fn generate_key(
 ///
 /// # Example
 /// ```
-/// use mldsa_edu::{MLDSAParameters, generate_key, sign};
+/// use mldsa::{MLDSAParameters, generate_key, sign};
 /// let param = MLDSAParameters::new("ML-DSA-44").unwrap();
 /// let seed = [0u8; 32];
 /// let mut pk = [0u8; 1312];
@@ -1192,6 +1192,9 @@ pub fn sign(
     let rnd = [0u8; 32];
 
     // Compute rho'
+    // K is 32 bytes (256 bits); k_bits is oversized to 512 for reuse
+    // elsewhere, so it must be sliced here or the trailing zero padding
+    // gets absorbed into the hash along with K.
     let mut k_bits_bytes = [0u8; 64];
     let k_bits_bytes_len = bits_to_bytes(&k_bits, &mut k_bits_bytes);
 
@@ -1340,7 +1343,6 @@ pub fn sign(
                 z[i][j] = plus_minus_mod(z[i][j], Q);
             }
         }
-
         // Encode signature
         return sig_encode(param, &c_tilde, &z, &h_matrix, sig_out);
     }
@@ -1359,7 +1361,7 @@ pub fn sign(
 ///
 /// # Example
 /// ```no_run
-/// use mldsa_edu::{MLDSAParameters, generate_key, sign, verify};
+/// use mldsa::{MLDSAParameters, generate_key, sign, verify};
 /// let param = MLDSAParameters::new("ML-DSA-44").unwrap();
 /// // Use a varied seed (important for proper key generation)
 /// let seed: Vec<u8> = (0..32).map(|i| i as u8).collect();
@@ -1677,7 +1679,7 @@ fn hash_message(hash_alg: &str, m: &[u8], output: &mut [u8]) -> Option<usize> {
 ///
 /// # Example
 /// ```
-/// use mldsa_edu::{MLDSAParameters, generate_key, hash_ml_dsa_sign};
+/// use mldsa::{MLDSAParameters, generate_key, hash_ml_dsa_sign};
 /// let param = MLDSAParameters::new("ML-DSA-44").unwrap();
 /// let seed = [0u8; 32];
 /// let mut pk = [0u8; 1312];
@@ -1740,7 +1742,7 @@ pub fn hash_ml_dsa_sign(
 ///
 /// # Example
 /// ```
-/// use mldsa_edu::{MLDSAParameters, generate_key, hash_ml_dsa_sign, hash_ml_dsa_verify};
+/// use mldsa::{MLDSAParameters, generate_key, hash_ml_dsa_sign, hash_ml_dsa_verify};
 /// let param = MLDSAParameters::new("ML-DSA-44").unwrap();
 /// let seed = [0u8; 32];
 /// let mut pk = [0u8; 1312];

@@ -5,7 +5,7 @@
 //! Tests key generation, signature generation, and signature verification
 //! using NIST FIPS-204 test vectors
 
-use mldsa_edu::*;
+use mldsa::*;
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;

@@ -1,9 +1,20 @@
 [package]
-name = "mldsa-edu"
-version = "0.1.0"
+name = "mldsa-ref"
+description = "A reference Rust implementation of the ML-DSA post-quantum digital signature algorithm."
+repository = "https://github.com/kriskwiatkowski/mldsa-ref"
+version = "0.0.1"
 edition = "2021"
-license = "MIT"
-authors = ["Kris Kwiatkowski"]
+license = "MIT OR Apache-2.0"
+keywords = ["cryptography", "post-quantum", "dsa", "code-based", "hqc"]
+categories = ["cryptography", "no-std"]
+
+[package.metadata.kat]
+vector_repository = "https://github.com/kriskwiatkowski/crypto-test-vectors.git"
+vector_revision = "5435bd2d90b97d26d4a7bb91e106ce8bbc45af5d"
+
+[workspace]
+members = ["xtask"]
+resolver = "2"
 
 [dependencies]
 sha2 = "0.10"
@@ -11,10 +22,27 @@ sha3 = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 hex = "0.4.3"
+katwalk = { path = "../katwalk", optional = true } # { version = "0.0.16", optional = true }
+env_logger = "0.11"
+log = "0.4"
 
 [dev-dependencies]
 criterion = "0.5"
 
+[features]
+default = ["std"]
+std = []
+katwalk-bin = ["dep:katwalk"]
+
+[lib]
+name = "mldsa"
+path = "src/lib.rs"
+
 [[bench]]
 name = "bench"
 harness = false
+
+[[bin]]
+name = "mldsa_wrapper"
+path = "test/kat/mldsa_wrapper.rs"
+required-features = ["katwalk-bin"]
