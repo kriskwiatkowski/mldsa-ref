@@ -22,7 +22,7 @@ sha3 = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 hex = "0.4.3"
-katwalk = { path = "../katwalk", optional = true } # { version = "0.0.16", optional = true }
+katwalk = { version = "0.1.0", optional = true }
 env_logger = "0.11"
 log = "0.4"
 
