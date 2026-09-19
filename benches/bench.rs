@@ -2,7 +2,7 @@
 // SPDX-FileContributor: Kris Kwiatkowski
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use mldsa_edu::{generate_key, sign, verify, MLDSAParameters};
+use mldsa::{generate_key, sign, verify, MLDSAParameters};
 
 fn benchmark_keygen(c: &mut Criterion) {
     let mut group = c.benchmark_group("keygen");

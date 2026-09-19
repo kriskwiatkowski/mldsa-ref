@@ -81,7 +81,7 @@ impl MLDSAParameters {
     ///
     /// # Example
     /// ```
-    /// use mldsa_edu::MLDSAParameters;
+    /// use mldsa::MLDSAParameters;
     /// let params = MLDSAParameters::new("ML-DSA-44").unwrap();
     /// ```
     pub fn new(name: &str) -> Result<Self, &'static str> {
@@ -182,13 +182,13 @@ fn exp2(x: usize) -> i32 {
 }
 
 fn ceiling_divide(a: usize, b: usize) -> usize {
-    (a + b - 1) / b
+    a.div_ceil(b)
 }
 
 // Algorithm 9: IntegerToBits - writes to output buffer
 fn integer_to_bits(mut x: i32, alpha: usize, output: &mut [bool]) -> usize {
-    for i in 0..alpha {
-        output[i] = (x % 2) == 1;
+    for elem in output.iter_mut().take(alpha) {
+        *elem = (x % 2) == 1;
         x /= 2;
     }
     alpha
@@ -207,8 +207,8 @@ fn bits_to_integer(y: &[bool], alpha: usize) -> i32 {
 fn bits_to_bytes(y: &[bool], output: &mut [u8]) -> usize {
     let c = y.len();
     let len = ceiling_divide(c, 8);
-    for i in 0..len {
-        output[i] = 0;
+    for elem in output.iter_mut().take(len) {
+        *elem = 0;
     }
     for i in 0..c {
         output[i / 8] += if y[i] { 1 } else { 0 } * (1 << (i % 8));
@@ -1016,7 +1016,7 @@ fn infinity_norm(a: &[[i32; POLY_SIZE]]) -> i32 {
 ///
 /// # Example
 /// ```
-/// use mldsa_edu::{MLDSAParameters, generate_key};
+/// use mldsa::{MLDSAParameters, generate_key};
 /// let param = MLDSAParameters::new("ML-DSA-44").unwrap();
 /// let seed = [0u8; 32]; // Use secure randomness in production
 /// let mut pk = [0u8; 1312];
@@ -1125,7 +1125,7 @@ pub fn generate_key(
 ///
 /// # Example
 /// ```
-/// use mldsa_edu::{MLDSAParameters, generate_key, sign};
+/// use mldsa::{MLDSAParameters, generate_key, sign};
 /// let param = MLDSAParameters::new("ML-DSA-44").unwrap();
 /// let seed = [0u8; 32];
 /// let mut pk = [0u8; 1312];
@@ -1192,6 +1192,9 @@ pub fn sign(
     let rnd = [0u8; 32];
 
     // Compute rho'
+    // K is 32 bytes (256 bits); k_bits is oversized to 512 for reuse
+    // elsewhere, so it must be sliced here or the trailing zero padding
+    // gets absorbed into the hash along with K.
     let mut k_bits_bytes = [0u8; 64];
     let k_bits_bytes_len = bits_to_bytes(&k_bits, &mut k_bits_bytes);
 
@@ -1340,7 +1343,6 @@ pub fn sign(
                 z[i][j] = plus_minus_mod(z[i][j], Q);
             }
         }
-
         // Encode signature
         return sig_encode(param, &c_tilde, &z, &h_matrix, sig_out);
     }
@@ -1359,7 +1361,7 @@ pub fn sign(
 ///
 /// # Example
 /// ```no_run
-/// use mldsa_edu::{MLDSAParameters, generate_key, sign, verify};
+/// use mldsa::{MLDSAParameters, generate_key, sign, verify};
 /// let param = MLDSAParameters::new("ML-DSA-44").unwrap();
 /// // Use a varied seed (important for proper key generation)
 /// let seed: Vec<u8> = (0..32).map(|i| i as u8).collect();
@@ -1677,7 +1679,7 @@ fn hash_message(hash_alg: &str, m: &[u8], output: &mut [u8]) -> Option<usize> {
 ///
 /// # Example
 /// ```
-/// use mldsa_edu::{MLDSAParameters, generate_key, hash_ml_dsa_sign};
+/// use mldsa::{MLDSAParameters, generate_key, hash_ml_dsa_sign};
 /// let param = MLDSAParameters::new("ML-DSA-44").unwrap();
 /// let seed = [0u8; 32];
 /// let mut pk = [0u8; 1312];
@@ -1740,7 +1742,7 @@ pub fn hash_ml_dsa_sign(
 ///
 /// # Example
 /// ```
-/// use mldsa_edu::{MLDSAParameters, generate_key, hash_ml_dsa_sign, hash_ml_dsa_verify};
+/// use mldsa::{MLDSAParameters, generate_key, hash_ml_dsa_sign, hash_ml_dsa_verify};
 /// let param = MLDSAParameters::new("ML-DSA-44").unwrap();
 /// let seed = [0u8; 32];
 /// let mut pk = [0u8; 1312];
