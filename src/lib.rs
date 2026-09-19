@@ -754,7 +754,8 @@ fn expand_mask(
         for i in 0..256 {
             let start = i * c;
             let end = (i + 1) * c;
-            y_out[r][i] = param.gamma1 - 1 - bits_to_integer(&bits[start..end], c);
+            // BitUnpack(v, gamma1-1, gamma1): y = b - z = gamma1 - z.
+            y_out[r][i] = param.gamma1 - bits_to_integer(&bits[start..end], c);
         }
     }
 }
@@ -1040,7 +1041,7 @@ pub fn generate_key(
 
     let mut rho = [false; 256];
     let mut rho_prime = [false; 512];
-    let mut k_bits = [false; 512];
+    let mut k_bits = [false; 256];
     let _rho_len = bytes_to_bits(&seed_expanded[..32], &mut rho);
     let _rho_prime_len = bytes_to_bits(&seed_expanded[32..96], &mut rho_prime);
     let _k_len = bytes_to_bits(&seed_expanded[96..128], &mut k_bits);
@@ -1142,7 +1143,7 @@ pub fn sign(
 ) -> usize {
     // Decode secret key
     let mut rho = [false; 256];
-    let mut k_bits = [false; 512];
+    let mut k_bits = [false; 256];
     let mut tr = [false; 512];
     let mut s1 = [[0i32; POLY_SIZE]; MAX_L];
     let mut s2 = [[0i32; POLY_SIZE]; MAX_K];
@@ -1330,6 +1331,14 @@ pub fn sign(
         if infinity_norm(&ct0[..param.k]) >= param.gamma2 || sum_h > param.omega {
             kappa += param.l;
             continue;
+        }
+
+        // sigEncode expects z mod± q (centered representative); z is
+        // currently in canonical [0, Q) form from matrix_add_l.
+        for i in 0..param.l {
+            for j in 0..256 {
+                z[i][j] = plus_minus_mod(z[i][j], Q);
+            }
         }
 
         // Encode signature

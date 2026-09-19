@@ -91,12 +91,12 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
     hex::encode(bytes).to_uppercase()
 }
 
-fn print_result<T: std::fmt::Debug>(label: &str, total: i32, success: i32, failed_tests: &[T]) {
+fn print_result<T: std::fmt::Debug>(label: &str, passed: i32, total: i32, failed_tests: &[T]) {
     println!(
         "{}{} Results: {}/{} tests passed",
         " ".repeat(10),
         label,
-        success,
+        passed,
         total
     );
 
@@ -287,24 +287,21 @@ fn run_siggen_kat() {
                 }
             };
 
-            // Check: signatures may differ due to rejection sampling, so we verify both
-            let sig_match = signature == expected_sig;
-
-            if sig_match {
+            // ML-DSA sigGen is deterministic for a given (sk, message, rnd=0), so a
+            // correct implementation must reproduce the expected bytes exactly.
+            if signature == expected_sig {
                 passed_tests += 1;
             } else {
-                // Even if bytes differ, both should be valid signatures
-                // For now, we'll accept if our signature is valid length
-                if signature.len() == expected_sig.len() {
-                    passed_tests += 1;
-                } else {
-                    failed_tests.push((tg_id, tc_id, param_set.clone(), pre_hash_mode.to_string()));
-                    println!("  Test {}: FAIL", tc_id);
+                failed_tests.push((tg_id, tc_id, param_set.clone(), pre_hash_mode.to_string()));
+                println!("  Test {}: FAIL", tc_id);
+                if signature.len() != expected_sig.len() {
                     println!(
                         "    Signature length mismatch: expected {}, got {}",
                         expected_sig.len(),
                         signature.len()
                     );
+                } else {
+                    println!("    Signature content mismatch (length matched)");
                 }
             }
         }
