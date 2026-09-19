@@ -182,13 +182,13 @@ fn exp2(x: usize) -> i32 {
 }
 
 fn ceiling_divide(a: usize, b: usize) -> usize {
-    (a + b - 1) / b
+    a.div_ceil(b)
 }
 
 // Algorithm 9: IntegerToBits - writes to output buffer
 fn integer_to_bits(mut x: i32, alpha: usize, output: &mut [bool]) -> usize {
-    for i in 0..alpha {
-        output[i] = (x % 2) == 1;
+    for elem in output.iter_mut().take(alpha) {
+        *elem = (x % 2) == 1;
         x /= 2;
     }
     alpha
@@ -207,8 +207,8 @@ fn bits_to_integer(y: &[bool], alpha: usize) -> i32 {
 fn bits_to_bytes(y: &[bool], output: &mut [u8]) -> usize {
     let c = y.len();
     let len = ceiling_divide(c, 8);
-    for i in 0..len {
-        output[i] = 0;
+    for elem in output.iter_mut().take(len) {
+        *elem = 0;
     }
     for i in 0..c {
         output[i / 8] += if y[i] { 1 } else { 0 } * (1 << (i % 8));

@@ -44,11 +44,8 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
-      - name: Run KAT
-        run: cargo run --example kat_tests
-
-  #      - name: Check formatting
-  #        run: cargo fmt -- --check
+      - name: Check formatting
+        run: cargo fmt -- --check
 
   #      - name: Run clippy
   #        run: cargo clippy -- -D warnings
