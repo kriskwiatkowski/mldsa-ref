@@ -1,7 +1,7 @@
 ---
 cff-version: 1.2.0
 version: "0.0.1"
-title: "Introducing ML-DSA: A Post-Quantum Digital Signature Algorithm"
+title: "MLDSA-ref: A reference implementation of ML-DSA digital signature"
 license: BSD-3-Clause
 abstract: >
   ML-DSA (Multi-Level Digital Signature Algorithm) is a post-quantum
