@@ -1,0 +1,24 @@
+---
+cff-version: 1.2.0
+version: "0.0.1"
+title: "Introducing ML-DSA: A Post-Quantum Digital Signature Algorithm"
+license: BSD-3-Clause
+abstract: >
+  ML-DSA (Multi-Level Digital Signature Algorithm) is a post-quantum
+  digital signature algorithm. The goal of this library is to provide
+  a reference implementation for experimental and educational purposes.
+authors:
+  - family-names: Kwiatkowski
+    given-names: Kris
+    orcid: "https://orcid.org/0000-0003-2363-317X"
+date-released: "2026-10-01"
+keywords:
+  - cryptography
+  - crypto
+  - post-quantum
+  - rust
+repository-code: "https://github.com/kriskwiatkowski/mldsa-ref/"
+type: software
+message: "Available at https://github.com/kriskwiatkowski/mldsa-ref. v0.0.1 Accessed Jun, 2026."
+contact:
+  - name: "Kris Kwiatkowski"
