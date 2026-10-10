@@ -8,7 +8,12 @@
 //!
 //! Education purposes only. Don't use for anything else.
 
-#![no_std]
+// The algorithm itself is no_std and allocation-free. The wasm feature turns
+// std back on purely for the JSON binding layer in `wasm.rs`.
+#![cfg_attr(not(feature = "wasm"), no_std)]
+
+#[cfg(feature = "wasm")]
+pub mod wasm;
 
 use sha2::{Digest as Sha2Digest, Sha224, Sha256, Sha384, Sha512, Sha512_224, Sha512_256};
 use sha3::{
@@ -1112,6 +1117,102 @@ pub fn generate_key(
     (pk_len, sk_len)
 }
 
+/// Per-signature instrumentation of the rejection-sampling loop.
+///
+/// `iterations` counts every execution of the signing loop, including the one
+/// that finally succeeded, so it matches the "number of repetitions" reported
+/// in FIPS 204 and in the benchmarking literature.
+///
+/// The four `fail_*` counters are *independent indicators*: `fail_z` and
+/// `fail_r0` are evaluated on every attempt (they are cheap, both norms are
+/// already computed), whereas `fail_ct0` and `fail_hint` are only reachable on
+/// attempts that already passed the first two checks. That asymmetry is
+/// deliberate - it mirrors Algorithm 7 - and it is exactly what is needed to
+/// separate the rejections that Dilithium Equation 5 models from the ones it
+/// does not.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AttemptRecord {
+    /// Infinity norm of z on this attempt.
+    pub z_norm: i32,
+    /// Infinity norm of r0 on this attempt.
+    pub r0_norm: i32,
+    /// Infinity norm of c*t0, or -1 if the attempt was rejected before it was computed.
+    pub ct0_norm: i32,
+    /// Hint weight, or -1 if the attempt was rejected before hints were built.
+    pub hint_weight: i32,
+    pub fail_z: bool,
+    pub fail_r0: bool,
+    pub fail_ct0: bool,
+    pub fail_hint: bool,
+}
+
+impl AttemptRecord {
+    pub fn accepted(&self) -> bool {
+        !(self.fail_z || self.fail_r0 || self.fail_ct0 || self.fail_hint)
+    }
+}
+
+/// Fixed-capacity sink for per-attempt records.
+///
+/// The crate is `no_std` with no allocator, so the caller owns the buffer.
+/// `len` keeps counting past the end of `buf`, which lets a caller detect that
+/// a trace was truncated instead of silently believing a short one.
+pub struct Trace<'a> {
+    buf: &'a mut [AttemptRecord],
+    len: usize,
+}
+
+impl<'a> Trace<'a> {
+    pub fn new(buf: &'a mut [AttemptRecord]) -> Self {
+        Trace { buf, len: 0 }
+    }
+    fn push(&mut self, r: AttemptRecord) {
+        if self.len < self.buf.len() {
+            self.buf[self.len] = r;
+        }
+        self.len += 1;
+    }
+    /// Number of attempts seen, which may exceed the buffer capacity.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    pub fn truncated(&self) -> bool {
+        self.len > self.buf.len()
+    }
+    pub fn records(&self) -> &[AttemptRecord] {
+        let n = if self.len < self.buf.len() { self.len } else { self.buf.len() };
+        &self.buf[..n]
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SignStats {
+    /// Total loop executions, including the accepted attempt.
+    pub iterations: u32,
+    /// Attempts violating ||z||_inf >= gamma1 - beta.
+    pub fail_z: u32,
+    /// Attempts violating ||r0||_inf >= gamma2 - beta.
+    pub fail_r0: u32,
+    /// Attempts violating ||c*t0||_inf >= gamma2 (only after z and r0 passed).
+    pub fail_ct0: u32,
+    /// Attempts violating hint weight > omega (only after z and r0 passed).
+    pub fail_hint: u32,
+}
+
+impl SignStats {
+    /// Rejections attributable to the two checks Dilithium Equation 5 models.
+    pub fn rejected_early(&self) -> u32 {
+        self.iterations - 1 - self.rejected_late()
+    }
+    /// Rejections from the two checks Equation 5 omits.
+    pub fn rejected_late(&self) -> u32 {
+        self.fail_ct0 + self.fail_hint
+    }
+}
+
 /// Signs a message using ML-DSA.
 ///
 /// # Arguments
@@ -1138,9 +1239,56 @@ pub fn sign(
     param: &MLDSAParameters,
     sk: &[u8],
     m: &[u8],
-    _deterministic: bool,
+    deterministic: bool,
     sig_out: &mut [u8],
 ) -> usize {
+    sign_traced(param, sk, m, deterministic, sig_out).0
+}
+
+/// Same as [`sign`], but also returns [`SignStats`] describing how the
+/// rejection-sampling loop behaved for this particular signature.
+pub fn sign_traced(
+    param: &MLDSAParameters,
+    sk: &[u8],
+    m: &[u8],
+    _deterministic: bool,
+    sig_out: &mut [u8],
+) -> (usize, SignStats) {
+    sign_traced_rnd(param, sk, m, &[0u8; 32], sig_out)
+}
+
+/// Same as [`sign_traced`], but with explicit per-message randomness `rnd`.
+///
+/// FIPS 204 calls this the hedged variant when `rnd` is fresh random bytes and
+/// the deterministic variant when it is all zeros. The distinction matters for
+/// the rejection loop: with a fixed `rnd`, a given (key, message) pair always
+/// takes the same number of repetitions, which makes the cost a stable and
+/// externally observable fingerprint of that pair.
+pub fn sign_traced_rnd(
+    param: &MLDSAParameters,
+    sk: &[u8],
+    m: &[u8],
+    rnd: &[u8; 32],
+    sig_out: &mut [u8],
+) -> (usize, SignStats) {
+    sign_core(param, sk, m, rnd, sig_out, None)
+}
+
+/// Signing with an optional per-attempt trace.
+///
+/// When `trace` is supplied, one [`AttemptRecord`] is pushed per loop
+/// execution, carrying the observed norms and which checks failed. This is what
+/// drives the interactive explorer: it lets a reader watch a real signature
+/// abort against real thresholds rather than a simulated coin flip.
+pub fn sign_core(
+    param: &MLDSAParameters,
+    sk: &[u8],
+    m: &[u8],
+    rnd: &[u8; 32],
+    sig_out: &mut [u8],
+    mut trace: Option<&mut Trace>,
+) -> (usize, SignStats) {
+    let mut stats = SignStats::default();
     // Decode secret key
     let mut rho = [false; 256];
     let mut k_bits = [false; 256];
@@ -1188,8 +1336,8 @@ pub fn sign(
     let mut mu = [0u8; 64];
     reader_mu.read(&mut mu);
 
-    // Generate rnd (0 for deterministic)
-    let rnd = [0u8; 32];
+    // Per-message randomness: zeros for the deterministic variant, fresh
+    // bytes for the hedged variant (FIPS 204, Section 3.4).
 
     // Compute rho'
     // K is 32 bytes (256 bits); k_bits is oversized to 512 for reuse
@@ -1200,7 +1348,7 @@ pub fn sign(
 
     let mut xof_rho_prime = Shake256::default();
     xof_rho_prime.update(&k_bits_bytes[..k_bits_bytes_len]);
-    xof_rho_prime.update(&rnd);
+    xof_rho_prime.update(rnd);
     xof_rho_prime.update(&mu);
     let mut reader_rho_prime = xof_rho_prime.finalize_xof();
     let mut rho_prime_bytes = [0u8; 64];
@@ -1211,6 +1359,8 @@ pub fn sign(
     let mut kappa = 0;
 
     loop {
+        stats.iterations += 1;
+
         // Expand mask
         let mut y = [[0i32; POLY_SIZE]; MAX_L];
         expand_mask(param, &rho_prime[..rho_prime_len], kappa, &mut y);
@@ -1293,9 +1443,32 @@ pub fn sign(
             }
         }
 
-        if infinity_norm(&z[..param.l]) >= param.gamma1 - param.beta
-            || infinity_norm(&r0[..param.k]) >= param.gamma2 - param.beta
-        {
+        // Evaluated independently rather than short-circuited: both norms are
+        // already computed, and attributing rejections per check is the point
+        // of the instrumentation.
+        let z_norm = infinity_norm(&z[..param.l]);
+        let r0_norm = infinity_norm(&r0[..param.k]);
+        let fail_z = z_norm >= param.gamma1 - param.beta;
+        let fail_r0 = r0_norm >= param.gamma2 - param.beta;
+        if fail_z {
+            stats.fail_z += 1;
+        }
+        if fail_r0 {
+            stats.fail_r0 += 1;
+        }
+        if fail_z || fail_r0 {
+            if let Some(t) = trace.as_deref_mut() {
+                t.push(AttemptRecord {
+                    z_norm,
+                    r0_norm,
+                    ct0_norm: -1,
+                    hint_weight: -1,
+                    fail_z,
+                    fail_r0,
+                    fail_ct0: false,
+                    fail_hint: false,
+                });
+            }
             kappa += param.l;
             continue;
         }
@@ -1331,7 +1504,28 @@ pub fn sign(
         }
 
         // Check hint count and ||ct0||
-        if infinity_norm(&ct0[..param.k]) >= param.gamma2 || sum_h > param.omega {
+        let ct0_norm = infinity_norm(&ct0[..param.k]);
+        let fail_ct0 = ct0_norm >= param.gamma2;
+        let fail_hint = sum_h > param.omega;
+        if fail_ct0 {
+            stats.fail_ct0 += 1;
+        }
+        if fail_hint {
+            stats.fail_hint += 1;
+        }
+        if let Some(t) = trace.as_deref_mut() {
+            t.push(AttemptRecord {
+                z_norm,
+                r0_norm,
+                ct0_norm,
+                hint_weight: sum_h as i32,
+                fail_z: false,
+                fail_r0: false,
+                fail_ct0,
+                fail_hint,
+            });
+        }
+        if fail_ct0 || fail_hint {
             kappa += param.l;
             continue;
         }
@@ -1344,7 +1538,7 @@ pub fn sign(
             }
         }
         // Encode signature
-        return sig_encode(param, &c_tilde, &z, &h_matrix, sig_out);
+        return (sig_encode(param, &c_tilde, &z, &h_matrix, sig_out), stats);
     }
 }
 
